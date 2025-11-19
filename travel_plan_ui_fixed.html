@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>IntelliTrip — Travel Plan Viewer (Fixed)</title>
+  <style>
+    :root{--bg:#f6f8fb;--card:#fff;--accent:#2b6cb0;--muted:#6b7280}
+    body{font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; margin:0;background:var(--bg);color:#111}
+    header{background:linear-gradient(90deg,#0ea5a4, #2b6cb0);color:#fff;padding:18px 28px;display:flex;align-items:center;gap:16px}
+    header h1{font-size:20px;margin:0}
+    header p{margin:0;opacity:0.9}
+    .container{display:grid;grid-template-columns:360px 1fr;gap:20px;padding:20px;max-width:1200px;margin:20px auto}
+    .panel{background:var(--card);border-radius:12px;padding:16px;box-shadow:0 6px 18px rgba(11,22,40,0.06)}
+    .input-area textarea{width:100%;height:200px;border-radius:8px;border:1px solid #e6eef6;padding:12px;font-family:monospace}
+    .btn{background:var(--accent);color:#fff;padding:8px 12px;border-radius:8px;border:none;cursor:pointer}
+    .btn.secondary{background:#e6eef6;color:#064e3b}
+    .section-title{font-weight:700;margin-bottom:8px}
+    .itinerary{display:flex;flex-direction:column;gap:12px}
+    .leg{border-left:4px solid var(--accent);padding:10px 12px;border-radius:8px;background:#fbfdff}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .list{list-style:none;padding:0;margin:0}
+    .list li{padding:6px 0;border-bottom:1px dashed #eef4fb}
+    .muted{color:var(--muted)}
+    .right-top{display:flex;gap:8px;align-items:center}
+    pre{background:#0f1724;color:#e6eef6;padding:10px;border-radius:8px;overflow:auto}
+    footer{max-width:1200px;margin:10px auto;color:#475569;font-size:13px}
+    @media(max-width:900px){.container{grid-template-columns:1fr;padding:12px}}
+  </style>
+</head>
+<body>
+  <header>
+    <div style="width:42px;height:42px;border-radius:8px;background:#fff3;display:flex;align-items:center;justify-content:center;font-weight:700">IT</div>
+    <div>
+      <h1>IntelliTrip — Travel Plan Viewer</h1>
+      <p class="muted">Paste your session JSON (from /session) to render the itinerary, bookings, evaluation and saved memory.</p>
+    </div>
+    <div style="margin-left:auto" class="right-top">
+      <button class="btn" id="loadSample">Load Sample Result</button>
+      <button class="btn secondary" id="clearAll">Clear</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="panel input-area">
+      <div class="section-title">Paste session JSON</div>
+      <textarea id="jsonInput" placeholder='Paste full /session JSON here (or click Load Sample)'></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn" id="renderBtn">Render Plan</button>
+        <button class="btn secondary" id="downloadBtn">Download PDF</button>
+      </div>
+
+      <hr style="margin:12px 0" />
+      <div class="section-title">Raw JSON (collapsed)</div>
+      <pre id="rawJson" style="height:160px;overflow:auto">(no data)</pre>
+    </div>
+
+    <div class="panel" id="outputPanel">
+      <div id="overview">
+        <h2 style="margin:0 0 8px 0">Plan Preview</h2>
+        <div id="summaryLine" class="muted">No plan loaded — paste JSON and click Render Plan.</div>
+      </div>
+
+      <hr />
+
+      <div id="planContent" style="display:none">
+        <div class="grid">
+          <div>
+            <div class="section-title">Itinerary</div>
+            <div class="itinerary" id="itineraryContainer"></div>
+          </div>
+          <div>
+            <div class="section-title">Summary & Evaluation</div>
+            <div style="padding:10px;background:#fbfdff;border-radius:8px">
+              <div id="scoreLine" style="font-size:20px;font-weight:700"></div>
+              <div id="evalReasons" class="muted" style="margin-top:8px"></div>
+              <hr />
+              <div><strong>Memory ID:</strong> <span id="memoryId" class="muted"></span></div>
+            </div>
+          </div>
+        </div>
+
+        <hr />
+
+        <div class="grid">
+          <div>
+            <div class="section-title">Flight Suggestions</div>
+            <div id="flightsContainer"></div>
+          </div>
+          <div>
+            <div class="section-title">Hotel Suggestions</div>
+            <div id="hotelsContainer"></div>
+          </div>
+        </div>
+
+        <hr />
+        <div>
+          <div class="section-title">Research Insights (per destination)</div>
+          <div id="researchContainer"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <footer>Tip: For Kaggle use, paste the JSON output you received from <code>/session/{session_id}</code>. Use the Download button to save as PDF (browser print).</footer>
+
+  <script>
+    // <-- SAMPLE embedded below (your session JSON)
+    const sample = {
+  "user_id": "user_123",
+  "status": "completed",
+  "metadata": {
+    "request": {
+      "user_id": "user_123",
+      "destinations": [
+        "Paris",
+        "Nice"
+      ],
+      "dates": {
+
+      },
+      "preferences": {
+        "budget": "moderate",
+        "interests": [
+          "art",
+          "food"
+        ]
+      },
+      "pause_at": null
+    }
+  },
+  "created_at": "2025-11-19T05:14:57.489708",
+  "state": {
+    "research_Paris": [
+      {
+        "title": "Result 1 for Top attractions, budget, travel tips for Paris",
+        "snippet": "Short snippet...",
+        "url": "https://example.com/1"
+      },
+      {
+        "title": "Result 2 for Top attractions, budget, travel tips for Paris",
+        "snippet": "Short snippet...",
+        "url": "https://example.com/2"
+      },
+      {
+        "title": "Result 3 for Top attractions, budget, travel tips for Paris",
+        "snippet": "Short snippet...",
+        "url": "https://example.com/3"
+      },
+      {
+        "title": "Result 4 for Top attractions, budget, travel tips for Paris",
+        "snippet": "Short snippet...",
+        "url": "https://example.com/4"
+      },
+      {
+        "title": "Result 5 for Top attractions, budget, travel tips for Paris",
+        "snippet": "Short snippet...",
+        "url": "https://example.com/5"
+      }
+    ],
+    "research_Nice": [
+      {
+        "title": "Result 1 for Top attractions, budget, travel tips for Nice",
+        "snippet": "Short snippet...",
+        "url": "https://example.com/1"
+      },
+      {
+        "title": "Result 2 for Top attractions, budget, travel tips for Nice",
+        "snippet": "Short snippet...",
+        "url": "https://example.com/2"
+      },
+      {
+        "title": "Result 3 for Top attractions, budget, travel tips for Nice",
+        "snippet": "Short snippet...",
+        "url": "https://example.com/3"
+      },
+      {
+        "title": "Result 4 for Top attractions, budget, travel tips for Nice",
+        "snippet": "Short snippet...",
+        "url": "https://example.com/4"
+      },
+      {
+        "title": "Result 5 for Top attractions, budget, travel tips for Nice",
+        "snippet": "Short snippet...",
+        "url": "https://example.com/5"
+      }
+    ],
+    "analysis": {
+      "Paris": {
+        "recommended_days": 4,
+        "avg_daily_cost": 95,
+        "highlights": [
+          "Top sight in Paris"
+        ]
+      },
+      "Nice": {
+        "recommended_days": 3,
+        "avg_daily_cost": 92,
+        "highlights": [
+          "Top sight in Nice"
+        ]
+      }
+    },
+    "itinerary": {
+      "summary": "2-destination trip",
+      "legs": [
+        {
+          "destination": "Paris",
+          "start_date": "2025-11-19",
+          "days": 4,
+          "activities": [
+            "Explore Paris main attraction"
+          ]
+        },
+        {
+          "destination": "Nice",
+          "start_date": "2025-11-23",
+          "days": 3,
+          "activities": [
+            "Explore Nice main attraction"
+          ]
+        }
+      ]
+    },
+    "bookings": {
+      "flights": [
+        {
+          "destination": "Paris",
+          "options": [
+            {
+              "airline": "ExampleAir",
+              "price": 300,
+              "duration": "3h 20m",
+              "flight_id": "EX1"
+            },
+            {
+              "airline": "ExampleAir",
+              "price": 350,
+              "duration": "3h 20m",
+              "flight_id": "EX2"
+            },
+            {
+              "airline": "ExampleAir",
+              "price": 400,
+              "duration": "3h 20m",
+              "flight_id": "EX3"
+            }
+          ]
+        },
+        {
+          "destination": "Nice",
+          "options": [
+            {
+              "airline": "ExampleAir",
+              "price": 300,
+              "duration": "3h 20m",
+              "flight_id": "EX1"
+            },
+            {
+              "airline": "ExampleAir",
+              "price": 350,
+              "duration": "3h 20m",
+              "flight_id": "EX2"
+            },
+            {
+              "airline": "ExampleAir",
+              "price": 400,
+              "duration": "3h 20m",
+              "flight_id": "EX3"
+            }
+          ]
+        }
+      ],
+      "hotels": [
+        {
+          "destination": "Paris",
+          "options": [
+            {
+              "hotel": "Hotel Example",
+              "price_per_night": 110,
+              "rating": 4.2,
+              "hotel_id": "H1"
+            },
+            {
+              "hotel": "Hotel Example",
+              "price_per_night": 140,
+              "rating": 4.2,
+              "hotel_id": "H2"
+            },
+            {
+              "hotel": "Hotel Example",
+              "price_per_night": 170,
+              "rating": 4.2,
+              "hotel_id": "H3"
+            }
+          ]
+        },
+        {
+          "destination": "Nice",
+          "options": [
+            {
+              "hotel": "Hotel Example",
+              "price_per_night": 110,
+              "rating": 4.2,
+              "hotel_id": "H1"
+            },
+            {
+              "hotel": "Hotel Example",
+              "price_per_night": 140,
+              "rating": 4.2,
+              "hotel_id": "H2"
+            },
+            {
+              "hotel": "Hotel Example",
+              "price_per_night": 170,
+              "rating": 4.2,
+              "hotel_id": "H3"
+            }
+          ]
+        }
+      ]
+    },
+    "evaluation": {
+      "score": 85,
+      "reasons": [
+        "Good coverage",
+        "Fits typical budget"
+      ]
+    },
+    "memory_id": "86eab2bc-6f77-4c60-9137-d73c35c3f444",
+    "result": {
+      "session_id": "64634a12-f302-4674-88ff-bacddc482da1",
+      "itinerary": {
+        "summary": "2-destination trip",
+        "legs": [
+          {
+            "destination": "Paris",
+            "start_date": "2025-11-19",
+            "days": 4,
+            "activities": [
+              "Explore Paris main attraction"
+            ]
+          },
+          {
+            "destination": "Nice",
+            "start_date": "2025-11-23",
+            "days": 3,
+            "activities": [
+              "Explore Nice main attraction"
+            ]
+          }
+        ]
+      },
+      "bookings": {
+        "flights": [
+          {
+            "destination": "Paris",
+            "options": [
+              {
+                "airline": "ExampleAir",
+                "price": 300,
+                "duration": "3h 20m",
+                "flight_id": "EX1"
+              },
+              {
+                "airline": "ExampleAir",
+                "price": 350,
+                "duration": "3h 20m",
+                "flight_id": "EX2"
+              },
+              {
+                "airline": "ExampleAir",
+                "price": 400,
+                "duration": "3h 20m",
+                "flight_id": "EX3"
+              }
+            ]
+          },
+          {
+            "destination": "Nice",
+            "options": [
+              {
+                "airline": "ExampleAir",
+                "price": 300,
+                "duration": "3h 20m",
+                "flight_id": "EX1"
+              },
+              {
+                "airline": "ExampleAir",
+                "price": 350,
+                "duration": "3h 20m",
+                "flight_id": "EX2"
+              },
+              {
+                "airline": "ExampleAir",
+                "price": 400,
+                "duration": "3h 20m",
+                "flight_id": "EX3"
+              }
+            ]
+          }
+        ],
+        "hotels": [
+          {
+            "destination": "Paris",
+            "options": [
+              {
+                "hotel": "Hotel Example",
+                "price_per_night": 110,
+                "rating": 4.2,
+                "hotel_id": "H1"
+              },
+              {
+                "hotel": "Hotel Example",
+                "price_per_night": 140,
+                "rating": 4.2,
+                "hotel_id": "H2"
+              },
+              {
+                "hotel": "Hotel Example",
+                "price_per_night": 170,
+                "rating": 4.2,
+                "hotel_id": "H3"
+              }
+            ]
+          },
+          {
+            "destination": "Nice",
+            "options": [
+              {
+                "hotel": "Hotel Example",
+                "price_per_night": 110,
+                "rating": 4.2,
+                "hotel_id": "H1"
+              },
+              {
+                "hotel": "Hotel Example",
+                "price_per_night": 140,
+                "rating": 4.2,
+                "hotel_id": "H2"
+              },
+              {
+                "hotel": "Hotel Example",
+                "price_per_night": 170,
+                "rating": 4.2,
+                "hotel_id": "H3"
+              }
+            ]
+          }
+        ]
+      },
+      "evaluation": {
+        "score": 85,
+        "reasons": [
+          "Good coverage",
+          "Fits typical budget"
+        ]
+      },
+      "memory_id": "86eab2bc-6f77-4c60-9137-d73c35c3f444"
+    },
+    "completed_at": "2025-11-19T05:14:57.511209"
+  }
+};
+
+    const $raw = document.getElementById('rawJson');
+    const $input = document.getElementById('jsonInput');
+    const $render = document.getElementById('renderBtn');
+    const $itinerary = document.getElementById('itineraryContainer');
+    const $flights = document.getElementById('flightsContainer');
+    const $hotels = document.getElementById('hotelsContainer');
+    const $research = document.getElementById('researchContainer');
+    const $score = document.getElementById('scoreLine');
+    const $reasons = document.getElementById('evalReasons');
+    const $memory = document.getElementById('memoryId');
+    const $summary = document.getElementById('summaryLine');
+    const $plan = document.getElementById('planContent');
+    const $download = document.getElementById('downloadBtn');
+    const $load = document.getElementById('loadSample');
+    const $clear = document.getElementById('clearAll');
+
+    function prettyPrint(obj){return JSON.stringify(obj,null,2)}
+
+    function render(data){
+      $raw.textContent = prettyPrint(data);
+      $summary.textContent = `User: ${data.user_id} · Status: ${data.status} · Created: ${data.created_at || ''}`
+      const it = data.state.result && data.state.result.itinerary ? data.state.result.itinerary : data.state.itinerary;
+      const bookings = data.state.result && data.state.result.bookings ? data.state.result.bookings : data.state.bookings;
+      const evaln = data.state.result && data.state.result.evaluation ? data.state.result.evaluation : data.state.evaluation;
+      const memoryId = data.state.memory_id || (data.state.result && data.state.result.memory_id) || '';
+
+      // Itinerary
+      $itinerary.innerHTML = '';
+      if(it && it.legs){
+        it.legs.forEach(leg=>{
+          const el = document.createElement('div'); el.className='leg';
+          el.innerHTML = `<strong>${leg.destination}</strong> — ${leg.start_date} · ${leg.days} day(s)<div class="muted" style="margin-top:6px">${(leg.activities||[]).join(' · ')}</div>`
+          $itinerary.appendChild(el);
+        })
+      } else $itinerary.innerHTML = '<div class="muted">No itinerary found</div>';
+
+      // Evaluation
+      $score.textContent = evaln ? `Score: ${evaln.score}/100` : 'Score: N/A';
+      $reasons.textContent = evaln && evaln.reasons ? evaln.reasons.join(' · ') : '';
+      $memory.textContent = memoryId;
+
+      // Flights
+      $flights.innerHTML = '';
+      if(bookings && bookings.flights){
+        bookings.flights.forEach(f=>{
+          const card = document.createElement('div'); card.style.padding='8px'; card.style.marginBottom='8px'; card.style.background='#fff'; card.style.borderRadius='8px';
+          card.innerHTML = `<strong>${f.destination}</strong><ul class='list'>${(f.options||[]).map(o=>`<li>${o.airline} — ${o.price} — ${o.duration} (${o.flight_id})</li>`).join('')}</ul>`
+          $flights.appendChild(card);
+        })
+      } else $flights.innerHTML = '<div class="muted">No flight suggestions</div>';
+
+      // Hotels
+      $hotels.innerHTML = '';
+      if(bookings && bookings.hotels){
+        bookings.hotels.forEach(h=>{
+          const card = document.createElement('div'); card.style.padding='8px'; card.style.marginBottom='8px'; card.style.background='#fff'; card.style.borderRadius='8px';
+          card.innerHTML = `<strong>${h.destination}</strong><ul class='list'>${(h.options||[]).map(o=>`<li>${o.hotel} — ${o.price_per_night}/night — ★${o.rating} (${o.hotel_id})</li>`).join('')}</ul>`
+          $hotels.appendChild(card);
+        })
+      } else $hotels.innerHTML = '<div class="muted">No hotel suggestions</div>';
+
+      // Research
+      $research.innerHTML = '';
+      const researchKeys = Object.keys(data.state).filter(k=>k.startsWith('research_'));
+      if(researchKeys.length){
+        researchKeys.forEach(k=>{
+          const dest = k.replace('research_','');
+          const block = document.createElement('div'); block.style.marginBottom='10px';
+          block.innerHTML = `<strong>${dest}</strong><ul class='list'>${(data.state[k]||[]).map(r=>`<li><a href='${r.url}' target='_blank'>${r.title}</a> — <span class='muted'>${r.snippet}</span></li>`).join('')}</ul>`
+          $research.appendChild(block);
+        })
+      } else $research.innerHTML = '<div class="muted">No research results</div>';
+
+      $plan.style.display = 'block';
+    }
+
+    $render.addEventListener('click', ()=>{
+      let raw = $input.value.trim();
+      if(!raw){alert('Paste JSON or click Load Sample');return}
+      try{const parsed = JSON.parse(raw);render(parsed)}catch(e){alert('Invalid JSON: '+e.message)}
+    })
+
+    $load.addEventListener('click', ()=>{ $input.value = JSON.stringify(sample, null, 2); $raw.textContent = '(sample loaded)'; })
+    $clear.addEventListener('click', ()=>{ $input.value=''; $raw.textContent='(no data)'; $plan.style.display='none'; $summary.textContent='No plan loaded — paste JSON and click Render Plan.' })
+
+    $download.addEventListener('click', ()=>{ window.print(); })
+  </script>
+</body>
+</html>
