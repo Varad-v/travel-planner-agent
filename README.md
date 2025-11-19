@@ -1,5 +1,10 @@
 🌍 IntelliTrip — Multi-Agent Travel Planner
 
+<p align="center">
+  <img src="https://github.com/Varad-v/travel-planner-agent/blob/main/ChatGPT%20Image%20Nov%2019,%202025,%2011_50_30%20AM.png?raw=true" alt="IntelliTrip Banner" width="100%">
+</p>
+
+
 This project is a multi-agent travel planning system built using FastAPI, sessions, long-term memory, and parallel reasoning agents.
 It generates:
 
